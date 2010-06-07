@@ -1,0 +1,7 @@
+.project
+.cache
+.settings
+.externalToolBuilders
+.swp
+.buildpath
+tmp
