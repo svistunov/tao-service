@@ -1,5 +1,5 @@
 <?php
-/// <module name="Service.Yandex.Direct" maintainer="timokhin@techart.ru" version="0.1.0">
+/// <module name="Service.Yandex.Direct" maintainer="timokhin@techart.ru" version="0.2.0">
 Core::load('SOAP');
 
 /// <class name="Service.Yandex.Direct" stereotype="module">
@@ -7,7 +7,7 @@ Core::load('SOAP');
 class Service_Yandex_Direct implements Core_ModuleInterface {
 
 ///   <constants>
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const DELAY   = 5;
   const WSDL    = 'http://soap.direct.yandex.ru/api.wsdl';
 ///   </constants>
@@ -51,27 +51,6 @@ class Service_Yandex_Direct implements Core_ModuleInterface {
 ///     </body>
 ///   </method>
 
-///   <method name="id_for" returns="int" access="protected" scope="class">
-///     <args>
-///       <arg name="object" type="object" />
-///       <arg name="attr"   type="string" />
-///     </args>
-///     <body>
-  static public function id_for($object, $attr) {
-    switch (true) {
-      case (is_numeric($object) || is_string($object)):
-        return (int) $object;
-      case ($object instanceof Service_Yandex_Direct_Entity):
-        return (int) $object[$attr];
-      case is_array($object) && isset($object[$attr]):
-        return $object[$attr];
-      case is_object($object):
-        return (int) $object->CampaignID;
-    }
-  }
-///     </body>
-///   </method>
-
 ///   </protocol>
 }
 /// </class>
@@ -81,9 +60,14 @@ class Service_Yandex_Direct implements Core_ModuleInterface {
 /// </aggregation>
 
 
-///  <class name="Service.Yandex.Direct.Exception" extends="Core.Exception" stereotype="exception">
+/// <class name="Service.Yandex.Direct.Exception" extends="Core.Exception" stereotype="exception">
 class Service_Yandex_Direct_Exception extends Core_Exception {}
-///  </class>
+/// </class>
+
+
+/// <class name="Service.Yandex.Direct.BadCampaignScopeException" extends="Service.Yandex.Direct.Exception" stereotype="exception">
+class Service_Yandex_Direct_BadCampaignScopeException extends Service_Yandex_Direct_Exception {}
+/// </class>
 
 
 /// <class name="Service.Yandex.Direct.APIConsumer" stereotype="abstract">
@@ -292,7 +276,8 @@ abstract class Service_Yandex_Direct_Collection
       case $property === '__items':
         return $this->items;
       case method_exists($this, $m = "get_$property"):
-        return $this->$m();
+        return property_exists($this, $property) ?
+          ($this->$property === null ? $this->$property = $this->$m() : $this->$property) : $this->$m();
       default:
         throw new Core_MissingPropertyException($property);
     }
@@ -420,6 +405,12 @@ abstract class Service_Yandex_Direct_Collection
           case 'in':
             if (array_search($item->$attr, $cond[2]) !== false) $passed++;
             break;
+          case '!in':
+            if (array_search($item->$attr, $cond[2]) === false) $passed++;
+            break;
+          case 'not':
+            if (!isset($item->$attr) || !$item->$attr) $passed++;
+            break;
         }
       }
       if ($passed == $limit) $res[] = $item;
@@ -429,6 +420,10 @@ abstract class Service_Yandex_Direct_Collection
   }
 ///     </body>
 ///   </method>
+
+///   </protocol>
+
+///   <protocol name="performing">
 
 ///   <method name="assign" returns="Service.Yandex.Direct.Collection">
 ///     <args>
@@ -512,6 +507,7 @@ class Service_Yandex_Direct_EntityCollection extends Service_Yandex_Direct_Colle
 
 /// <class name="Service.Yandex.Direct.IndexedCollection" extends="Service.Yandex.Direct.Collection">
 abstract class Service_Yandex_Direct_IndexedCollection extends Service_Yandex_Direct_Collection {
+
   protected $ids = array();
 
 ///   <protocol name="creating">
@@ -803,7 +799,7 @@ class Service_Yandex_Direct_APIMapper extends Service_Yandex_Direct_Mapper {
   public function __construct(array $options) {
     $this->soap = SOAP::Client(
       Service_Yandex_Direct::WSDL,
-      array_merge($options, array('features' => SOAP_SINGLE_LENGTH_ARRAYS, 'trace' => 1)));
+      array_merge($options, array('features' => SOAP_SINGLE_ELEMENT_ARRAYS, 'trace' => 1)));
   }
 ///     </body>
 ///   </method>
@@ -812,9 +808,57 @@ class Service_Yandex_Direct_APIMapper extends Service_Yandex_Direct_Mapper {
 
 ///   <protocol name="building">
 
-///   <method name=" get_campaigns" returns="Service.Yandex.Direct.CampaignsMapper" access="protected">
+///   <method name="all_campaigns" returns="Service.Yandex.Direct.CampaignsCollection">
 ///     <body>
-  protected function get_campaigns() { return new Service_Yandex_Direct_CampaignsMapper(); }
+  public function all_campaigns() {
+    return new Service_Yandex_Direct_CampaignsCollection($this->api()->GetCampaignsList());
+  }
+///     </body>
+///   </method>
+
+///   <method name="campaigns_for" returns="Service.Yandex.Direct.CampaignsCollection">
+///     <body>
+  public function campaigns_for() {
+    return new Service_Yandex_Direct_CampaignsCollection(
+      $this->api()->GetCampaignsList($args = func_get_args()));
+  }
+///     </body>
+///   </method>
+
+///   <method name="balance_for" returns="Service.Yandex.Direct.BalanceCollection">
+///     <body>
+  public function balance_for() {
+    return new Service_Yandex_Direct_BalanceCollection(
+      $this->api()->GetBalance(Core::normalize_args(func_get_args())));
+  }
+///     </body>
+///   </method>
+
+///   <method name="all_clients" returns="Service.Yandex.Direct.ClientsCollection">
+///     <body>
+  public function all_clients() {
+    return new Service_Yandex_Direct_ClientsCollection($this->api()->GetClientsList());
+  }
+///     </body>
+///   </method>
+
+///   <method name="client_named" returns="Service.Yandex.Direct.Client">
+///     <args>
+///       <arg name="login" type="string" />
+///     </args>
+///     <body>
+  public function client_named($login) {
+    return new Service_Yandex_Direct_Client($this->api()->GetClientInfo($login));
+  }
+///     </body>
+///   </method>
+
+///   <method name="find" returns="Service.Yandex.Direct.BannersCollection">
+///     <body>
+  public function find_banners() {
+    return new Service_Yandex_Direct_BannersCollection(
+      $this->api()->GetBanners(array('BannerIDS' => func_get_args())), 0);
+  }
 ///     </body>
 ///   </method>
 
@@ -837,18 +881,6 @@ class Service_Yandex_Direct_APIMapper extends Service_Yandex_Direct_Mapper {
   protected function get_categories() {
     return new Service_Yandex_Direct_CategoriesCollection($this->api()->GetRubrics());
   }
-///     </body>
-///   </method>
-
-///   <method name="get_banners" returns="Service.Yandex.Direct.BannersMapper">
-///     <body>
-  protected function get_banners() { return new Service_Yandex_Direct_BannersMapper(); }
-///     </body>
-///   </method>
-
-///   <method name="get_clients" returns="Service.Yandex.Direct.ClientsMapper" access="protected">
-///     <body>
-  protected function get_clients() { return new Service_Yandex_Direct_ClientsMapper(); }
 ///     </body>
 ///   </method>
 
@@ -918,45 +950,62 @@ class Service_Yandex_Direct_APIMapper extends Service_Yandex_Direct_Mapper {
 
 
 /// <class name="Service.Yandex.Direct.Campaign" extends="Service.Yandex.Direct.Object">
-///   <implements interface="Core.CallInterface" />
-class Service_Yandex_Direct_Campaign
-  extends Service_Yandex_Direct_Entity
-  implements Core_CallInterface {
+class Service_Yandex_Direct_Campaign extends Service_Yandex_Direct_Entity {
 
-///   <protocol name="accessing">
+///   <protocol name="performing">
 
-///   <method name="get_banners" returns="Service.Yandex.Direct.BannersMapper" access="protected">
+///   <method name="all_banners" returns="Service.Yandex.Direct.BannersCollection">
 ///     <body>
-  protected function get_banners() {
-    return new Service_Yandex_Direct_BannersMapper($this);
+  public function all_banners() {
+    return new Service_Yandex_Direct_BannersCollection(
+      $this->api()->GetBanners(array('CampaignIDS' => array($this->entity->CampaignID))),
+      $this->entity->CampaignID);
   }
+///     </body>
+///   </method>
+
+///   <method name="stop" returns="boolean">
+///     <body>
+  public function stop() { return $this->exec('StopCampaign'); }
+///     </body>
+///   </method>
+
+///   <method name="resume" returns="boolean">
+///     <body>
+  public function resume() { return $this->exec('ResumeCampaign'); }
+///     </body>
+///   </method>
+
+///   <method name="archive" returns="boolean">
+///     <body>
+  public function archive() { return $this->exec('ArchiveCampaign'); }
+///     </body>
+///   </method>
+
+///   <method name="unarchive" returns="boolean">
+///     <body>
+  public function unarchive() { return $this->exec('UnarchiveCampaign'); }
+///     </body>
+///   </method>
+
+///   <method name="delete" returns="boolean">
+///     <body>
+  public function delete() { return $this->exec('DeleteCampaign'); }
 ///     </body>
 ///   </method>
 
 ///   </protocol>
 
-///   <protocol name="calling">
+///   <protocol name="supporting">
 
-///    <method name="__call" returns="mixed">
-///      <args>
-///        <arg name="method" type="string" />
-///        <arg name="args" />
-///      </args>
-///      <body>
-  public function __call($method, $args) {
-    switch ($method) {
-      case 'stop':
-      case 'resume':
-      case 'archive':
-      case 'unarchive':
-      case 'delete':
-        return $this->api()->campaigns->$method($this);
-      default:
-        return parent::__call($method, $args);
-    }
-  }
-///      </body>
-///    </method>
+///   <method name="exec" returns="boolean" access="private">
+///     <args>
+///       <arg name="method" type="string" />
+///     </args>
+///     <body>
+  private function exec($method) { return $this->api()->$method($this->entity->CampaignID) ? true : false; }
+///     </body>
+///   </method>
 
 ///   </protocol>
 }
@@ -1011,17 +1060,20 @@ class Service_Yandex_Direct_CampaignsFilter extends Service_Yandex_Direct_Filter
 ///   <depends supplier="Service.Yandex.Direct.BannersMapper" stereotype="creates" />
 class Service_Yandex_Direct_CampaignsCollection extends Service_Yandex_Direct_IndexedCollection {
 
-///   <protocol name="accessing">
+///   <protocol name="performing">
 
-///   <method name="get_banners" returns="Service.Yandex.Direct.BannersMapper" access="protected">
+///   <method name="banners" returns="Service.Yandex.Direct.BannersCollection">
 ///     <body>
-  protected function get_banners() { return new Service_Yandex_Direct_BannersMapper($this); }
+  public function all_banners() {
+    return new Service_Yandex_Direct_BannersCollection(
+      $this->api()->GetBanners(array('BannerIDS' => $this->__ids)), 0);
+  }
 ///     </body>
 ///   </method>
 
-///   <method name="get_balance" returns="Service.Yandex.Direct.BalanceCollection" access="protected">
+///   <method name="balance" returns="Service.Yandex.Direct.BalanceCollection" access="protected">
 ///     <body>
-  protected function get_balance() {
+  public function balance() {
     return new Service_Yandex_Direct_BalanceCollection($this->api()->GetBalance($this->__ids));
   }
 ///     </body>
@@ -1054,86 +1106,58 @@ class Service_Yandex_Direct_CampaignsCollection extends Service_Yandex_Direct_In
 /// </class>
 
 
-/// <class name="Service.Yandex.Direct.CampaignsMapper" extends="Service.Yandex.Direct.Mapper">
-///   <depends supplier="Service.Yandex.Direct.CampaignsCollection" stereotype="creates" />
-class Service_Yandex_Direct_CampaignsMapper extends Service_Yandex_Direct_Mapper {
+/// <class name="Service.Yandex.Direct.Banner" extends="Service.Yandex.Direct.Entity">
+///   <implements interface="Core.CallInterface" />
+///   <depends supplier="Service.Yandex.Direct.PhrasesMapper" stereotype="creates" />
+class Service_Yandex_Direct_Banner extends Service_Yandex_Direct_Entity {
+
+///   <method name="all_phrases" returns="Service.Yandex.Direct.PhrasesCollection">
+///     <body>
+  public function all_phrases() {
+    $args = func_get_args();
+    return new Service_Yandex_Direct_PhrasesCollection(
+      count($args) ?
+        $this->api()->GetBannerPhrasesFilter(array('BannerIDS' => array($this->entity->BannerID), 'FieldsNames' => Core::normalize_args($args))) :
+        $this->api()->GetBannerPhrases($this->entity->BannerID));
+  }
+///     </body>
+///   </method>
 
 ///   <protocol name="performing">
 
-///   <method name="select" returns="Service.Yandex.Direct.CampaignsCollection">
+///   <method name="moderate" returns="boolean">
 ///     <body>
-  public function select() {
-    return new Service_Yandex_Direct_CampaignsCollection($this->api()->getCampaignsList());
-  }
+  public function moderate() { return $this->exec('ModerateBaners'); }
 ///     </body>
 ///   </method>
 
-///   <method name="select_for" returns="Service.Yandex.Direct.CampaignsCollection">
+///   <method name="stop" returns="boolean">
 ///     <body>
-  public function select_for() {
-    return new Service_Yandex_Direct_CampaignsCollection(
-      $this->api()->GetCampaignsList($args = func_get_args()));
-  }
+  public function stop() { return $this->exec('StopBanners'); }
 ///     </body>
 ///   </method>
 
-///   <method name="balance_for" returns="Service.Yandex.Direct.BalanceCollection">
+///   <method name="resume" returns="boolean">
 ///     <body>
-  public function balance_for() {
-    return new Service_Yandex_Direct_BalanceCollection($this->api()->GetBalance(Core::normalize_args(func_get_args())));
-  }
+  public function resume() { return $this->exec('ResumeBanners');}
 ///     </body>
 ///   </method>
 
-
-///    <method name="stop" returns="boolean">
-///      <args>
-///        <arg name="campaign" />
-///      </args>
-///      <body>
-  public function stop($campaign) { return $this->call_with_id('StopCampaign', $campaign); }
-///      </body>
-///    </method>
-
-///    <method name="resume" returns="boolean">
-///      <args>
-///        <arg name="campaign" />
-///      </args>
-///      <body>
-  public function resume($campaign) { return $this->call_with_id('ResumeCampaign', $campaign); }
-///      </body>
-///    </method>
-
-///    <method name="archive" returns="boolean">
-///      <args>
-///        <arg name="campaign" />
-///      </args>
-///      <body>
-  public function archive($campaign) { return $this->call_with_id('ArchiveCampaign', $campaign); }
-///      </body>
-///    </method>
-
-///    <method name="unarchive" returns="boolean">
-///      <args>
-///        <arg name="campaign" />
-///      </args>
-///      <body>
-  public function unarchive($campaign) { return $this->call_with_id('UnarchiveCampaign', $campaign); }
-///      </body>
-///    </method>
-
-///    <method name="delete" returns="boolean">
-///      <args>
-///        <arg name="campaign" />
-///      </args>
-///      <body>
-  public function delete($campaign) { return $this->call_with_id('DeleteCampaign', $campaign); }
-///      </body>
-///    </method>
-
-///   <method name="filter" returns="Service.Yandex.Direct.CampaignsFilter">
+///   <method name="archive" returns="boolean">
 ///     <body>
-  public function filter() { return new Service_Yandex_Direct_CampaignsFilter(); }
+  public function archive() { return $this->exec('ArchiveBanners'); }
+///     </body>
+///   </method>
+
+///   <method name"unarchive" returns="boolean">
+///     <body>
+  public function unarchive() { return $this->exec('UnarchiveBanners'); }
+///     </body>
+///   </method>
+
+///   <method name="delete" returns="boolean">
+///     <body>
+  public function delete() { return $this->exec('DeleteBanners'); }
 ///     </body>
 ///   </method>
 
@@ -1141,57 +1165,16 @@ class Service_Yandex_Direct_CampaignsMapper extends Service_Yandex_Direct_Mapper
 
 ///   <protocol name="supporting">
 
-///   <method name="call_with_id" returns="boolean" access="private">
+///   <method name="exec" returns="boolean" access="private">
 ///     <args>
 ///       <arg name="method" type="string" />
-///       <arg name="id" />
 ///     </args>
 ///     <body>
-  private function call_with_id($method, $id) {
-    return $this->api()->$method(Service_Yandex_Direct::id_for($id, 'CampaignID')) ? true : false;
+  private function exec($method) {
+    return $this->api->$method($this->entity->CampaignID, array($hthis->entity->BannerID)) ? true : false;
   }
-///     </body>
-///   </method>
-
-///   </protocol>
-}
-/// </class>
-
-
-/// <class name="Service.Yandex.Direct.Banner" extends="Service.Yandex.Direct.Entity">
-///   <implements interface="Core.CallInterface" />
-///   <depends supplier="Service.Yandex.Direct.PhrasesMapper" stereotype="creates" />
-class Service_Yandex_Direct_Banner extends Service_Yandex_Direct_Entity {
-
-///   <protocol name="calling">
-
-///   <method name="__call" returns="mixed">
-///     <args>
-///       <arg name="method" type="string" />
-///       <arg name="args" type="array" />
-///     </args>
-///     <body>
-  public function __call($method, $args) {
-    switch ($method) {
-      case 'moderate':
-      case 'stop':
-      case 'resume':
-      case 'archive':
-      case 'unarchive':
-      case 'delete':
-        return $this->api()->banners->$method($this->entity->CampaignID, array($this->entity->BannerID));
-      default:
-        throw new Core_MissingMethodException($method);
-    }
-  }
-///     </body>
-///   </method>
-
-///   <method name="get_phrases" returns="Service.Yandex.Direct.PhrasesMapper" access="protected">
-///     <body>
-  protected function get_phrases() { return new Service_Yandex_Direct_PhrasesMapper($this); }
-///     </body>
-///   </method>
+///       </body>
+///     </method>
 
 ///   </protocol>
 }
@@ -1199,12 +1182,9 @@ class Service_Yandex_Direct_Banner extends Service_Yandex_Direct_Entity {
 
 
 /// <class name="Service.Yandex.Direct.BanersCollection" extends="Service.Yandex.Direct.IndexedCollection">
-///   <implements interface="Core.CallInterface" />
 ///   <depends supplier="Service.Yandex.Direct.PhrasesMapper" steerotype="creates" />
 ///   <depends supplier="Service.Yandex.Direct.Banner" stereotype="creates" />
-class Service_Yandex_Direct_BannersCollection
-  extends Service_Yandex_Direct_IndexedCollection
-  implements Core_CallInterface {
+class Service_Yandex_Direct_BannersCollection extends Service_Yandex_Direct_IndexedCollection {
 
   protected $campaign_id;
 
@@ -1225,11 +1205,55 @@ class Service_Yandex_Direct_BannersCollection
 
 ///   </protocol>
 
-///   <protocol name="accessing">
+///   <protocol name="performing">
 
-///   <method name="get_phrases" returns="Service.Yandex.Direct.PhrasesMapper" access="protected">
+///   <method name="all_phrases" returns="Service.Yandex.Direct.PhrasesCollection">
 ///     <body>
-  protected function get_phrases() { return new Service_Yandex_Direct_PhrasesMapper($this); }
+  public function all_phrases() {
+    $args = func_get_args();
+    return new Service_Yandex_Direct_PhrasesCollection(
+      count($args) ?
+        $this->api()->GetBannerPhrasesFilter(array(
+          'BannerIDS'   => $this->__ids,
+          'FieldsNames' => Core::normalize_args($args))) :
+        $this->api()->GetBannerPhrases($this->__ids));
+  }
+////    </body>
+///   </method>
+
+///   <method name="moderate" returns="boolean">
+///     <body>
+  public function moderate() { return $this->exec('ModerateBanners'); }
+///     </body>
+///   </method>
+
+///   <method name="stop" returns="boolean">
+///     <body>
+  public function stop() { return $this->exec('StopBanners'); }
+///     </body>
+///   </method>
+
+///   <method name="resume" returns="boolean">
+///     <body>
+  public function resume() { return $this->exec('ResumeBanners'); }
+///     </body>
+///   </metod>
+
+///   <method name="archive" returns="boolean">
+///     <body>
+  public function archive() { return $this->exec('ArchiveBanners'); }
+///     </body>
+///   </method>
+
+///   <method name="unarchive" returns="boolean">
+///     <body>
+  public function unarchive() { return $this->exec('UnarchiveBanners'); }
+///     </body>
+///   </method>
+
+///   <method name="delete" returns="boolean">
+///     <body>
+  public function delete() { return $this->exec('DeleteBanners'); }
 ///     </body>
 ///   </method>
 
@@ -1255,181 +1279,16 @@ class Service_Yandex_Direct_BannersCollection
 ///     </body>
 ///   </method>
 
-///   </protocol>
-
-///   <protocol name="calling" interface="Core.CallInterface">
-
-///   <method name="__call" returns="mixed">
+///   <method name="exec" returns="" access="private">
 ///     <args>
-///       <arg name="method" type="string" />
-///       <arg name="args" type="array" />
+///       <arg name="action" type="string" />
 ///     </args>
 ///     <body>
-  public function __call($method, $args) {
-    switch ($method) {
-      case 'moderate':
-      case 'stop':
-      case 'resume':
-      case 'archive':
-      case 'unarchive':
-      case 'delete':
-        if ($this->campaign_id)
-          return $this->api()->banners->$method($this->campaign_id, $this->__ids);
-        else
-          throw new Service_Yandex_Direct_Exception('bad scope');
-      default:
-        throw new Core_MissingMethodException($method);
-    }
-  }
-///     </body>
-///   </method>
-
-///   </protocol>
-}
-/// </class>
-
-
-/// <class name="Service.Yandex.Direct.BannersMapper" extends="Service.Yandex.Direct.Mapper">
-///   <depends supplier="Service.Yandex.Direct.BanersCollection" stereotype="creates" />
-class Service_Yandex_Direct_BannersMapper extends Service_Yandex_Direct_Mapper {
-
-  protected $campaigns;
-
-///   <protocol name="creating">
-
-///   <method name="__construct">
-///     <args>
-///       <arg name="campaigns" default="array()" />
-///     </args>
-///     <body>
-  public function __construct($campaigns = array()) {
-    switch (true) {
-      case $campaigns instanceof Service_Yandex_Direct_CampaignsCollection:
-        $this->campaigns = $campaigns->__ids;
-        break;
-      case $campaigns instanceof Service_Yandex_Direct_Campaign:
-        $this->campaigns = array($campaigns->CampaignID);
-        break;
-      case is_array($campaigns):
-        $this->campaigns = array_values($campaigns);
-        break;
-      default:
-        throw new Service_Yandex_Direct_Exception('bad scope');
-    }
-  }
-///     </body>
-///   </method>
-
-///   </protocol>
-
-///   <protocol name="performing">
-
-///   <method name="select" returns="Service_Yandex_Direct_BannersCollection">
-///     <body>
-  public function select() {
-    return new Service_Yandex_Direct_BannersCollection(
-      $this->api()->GetBanners(array('CampaignIDS' => $this->campaigns)),
-      count($this->campaigns) == 1 ? $this->campaigns[0] : 0);
-  }
-///     </body>
-///   </method>
-
-///   <method name="find" returns="Service.Yandex.Direct.BannersCollection">
-///     <body>
-  public function find() {
-    return new Service_Yandex_Direct_BannersCollection(
-      $this->api()->GetBanners(array('BannerIDS' => func_get_args())),
-      count($this->campaigns) == 1 ? $this->campaigns[0] : 0);
-  }
-///     </body>
-///   </method>
-
-///   <method name="moderate" returns="boolean">
-///     <args>
-///       <arg name="campaign" />
-///       <arg name="ids" type="array" />
-///     </args>
-///     <body>
-  public function moderate($campaign, array $ids) {
-    return $this->call_for_campaign($campaign, 'ModerateBanners', $ids);
-    return $this->api()->ModerateBanners(Service_Yandex_Direct::id_for($campaign, 'CampaignID'), $ids);
-  }
-///     </body>
-///   </method>
-
-///   <method name="stop" returns="boolean">
-///     <args>
-///       <arg name="campaign" />
-///       <arg name="ids" type="array" />
-///     </args>
-///     <body>
-  public function stop($campaign, array $ids) {
-    return $this->call_for_campaign($campaign, 'StopBanners', $ids);
-  }
-///     </body>
-///   </method>
-
-///   <method name="resume" returns="boolean">
-///     <args>
-///       <arg name="campaign" />
-///       <arg name="ids" type="array" />
-///     </args>
-///     <body>
-  public function resume($campaign, array $ids) {
-    return $this->call_for_campaign($campaign, 'ResumeBanners', $ids);
-  }
-///     </body>
-///   </method>
-
-///   <method name="resume" returns="boolean">
-///     <args>
-///       <arg name="campaign" />
-///       <arg name="ids" type="array" />
-///     </args>
-///     <body>
-  public function archive($campaign, array $ids) {
-    return $this->call_for_campaign($campaign, 'ArchiveBanners', $ids);
-  }
-///     </body>
-///   </method>
-
-///   <method name="resume" returns="boolean">
-///     <args>
-///       <arg name="campaign" />
-///       <arg name="ids" type="array" />
-///     </args>
-///     <body>
-  public function unarchive($campaign, array $ids) {
-    return $this->call_for_campaign($campaign, 'UnarchiveBanners', $ids);
-  }
-///     </body>
-///   </method>
-
-///   <method name="resume" returns="boolean">
-///     <args>
-///       <arg name="campaign" />
-///       <arg name="ids" type="array" />
-///     </args>
-///     <body>
-  public function delete($campaign, array $ids) {
-    return $this->call_for_campaign($campaign, 'DeleteBanners', $ids);
-  }
-///     </body>
-///   </method>
-
-///   </protocol>
-
-///   <protocol name="supporting">
-
-///   <method name="call_for_campaign" returns="mixed" access="protected">
-///     <args>
-///       <arg name="campaign" />
-///       <arg name="method" type="string" />
-///       <arg name="ids" type="array" />
-///     </args>
-///     <body>
-  protected function call_for_campaign($campaign, $method, array $ids) {
-    return $this->api()->$method(Service_Yandex_Direct::id_for($campaign, 'CampaignID'), $ids);
+  private function exec($action) {
+    if ($this->campaign_id)
+      return $this->api->$action($this->campaign_id, $this->__ids);
+    else
+      throw new Service_Yandex_Direct_BadCampaignScopeException();
   }
 ///     </body>
 ///   </method>
@@ -1442,16 +1301,21 @@ class Service_Yandex_Direct_BannersMapper extends Service_Yandex_Direct_Mapper {
 /// <class name="Service.Yandex.Direct.Phrase" extends="Service.Yandex.Direct.Entity">
 class Service_Yandex_Direct_Phrase extends Service_Yandex_Direct_Entity {
 
+///   <protocol name="supporting">
+
+///   <method name="get_id" returns="int" access="protected">
+///     <body>
   protected function get_id() { return $this->entity->PhraseID; }
+///     </body>
+///   </method>
 
-  protected function get_top_special_price() { return (float) $this->entity->Prices[0]; }
-
-  protected function get_special_price() { return (float) $this->entity->Prices[1]; }
-
-  protected function get_top_price() { return (float) $this->entity->Prices[2]; }
-
+///   <method name="get_current_price" returns="float" access="protected">
+///     <body>
   protected function get_current_price() { return (float) $this->entity->CurrentOnSearch; }
+///     </body>
+///   </method>
 
+///   </protocol>
 }
 /// </class>
 
@@ -1522,58 +1386,6 @@ class Service_Yandex_Direct_PhrasesCollection extends Service_Yandex_Direct_Inde
 /// </class>
 
 
-/// <class name="Service.Yandex.Direct.PhrasesMapper" extends="Service.Yandex.Direct.Mapper">
-///   <depends supplier="Service.Yandex.Direct.PhrasesCollection" stereotype="creates" />
-class Service_Yandex_Direct_PhrasesMapper extends Service_Yandex_Direct_Mapper {
-
-  protected $banners;
-
-///   <protocol name="creating">
-
-///   <method name="__construct">
-///     <args>
-///       <arg name="banners" />
-///     </args>
-///     <body>
-  public function __construct($banners) {
-    switch (true) {
-      case $banners instanceof Service_Yandex_Direct_BannersCollection:
-        $this->banners = $banners->__ids;
-        break;
-      case $banners instanceof Service_Yandex_Direct_Banner:
-        $this->banners = array($banners->BannerID);
-        break;
-      case is_array($banners):
-        $this->banners = array_values($banners);
-        break;
-      default:
-        throw new Service_Yandex_Direct_Exception('bad scope');
-    }
-  }
-///     </body>
-///   </method>
-
-///   </protocol>
-
-///   <protocol name="performing">
-
-///   <method name="select" returns="Service.Yandex.Direct.PhrasesCollection">
-///     <body>
-  public function select() {
-    $args = func_get_args();
-    return new Service_Yandex_Direct_PhrasesCollection(
-      count($args) ?
-        $this->api()->GetBannerPhrasesFilter(array('BannerIDS' => $this->banners, 'FieldsNames' => Core::normalize_args($args))) :
-        $this->api()->GetBannerPhrases($this->banners));
-  }
-///     </body>
-///   </method>
-
-///   </protocol>
-}
-/// </class>
-
-
 /// <class name="Service.Yandex.Direct.Price" extends="Service.Yandex.Direct.Entity">
 class Service_Yandex_Direct_Price extends Service_Yandex_Direct_Entity {
 
@@ -1591,10 +1403,17 @@ class Service_Yandex_Direct_Price extends Service_Yandex_Direct_Entity {
 ///     </body>
 ///   </method>
 
+///   <method name="set_auto_broker" returns="Service,Yandex.Direct.Price">
+///     <args>
+///       <arg name="flag" />
+///     </args>
+///     <body>
   public function set_auto_broker($flag) {
     $this->entity->AutoBroker = ($flag && $flag !== 'No') ? 'Yes' : 'No';
     return $this;
   }
+///     </body>
+///   </method>
 
 ///   </protocol>
 }
@@ -1602,8 +1421,7 @@ class Service_Yandex_Direct_Price extends Service_Yandex_Direct_Entity {
 
 
 /// <class name="Service.Yandex.Direct.PhrasesCollection" extends="Service.Yandex.Direct.IndexedCollection">
-class Service_Yandex_Direct_PricesCollection
-  extends Service_Yandex_Direct_IndexedCollection {
+class Service_Yandex_Direct_PricesCollection extends Service_Yandex_Direct_IndexedCollection {
 
 ///   <protocol name="creating">
 
@@ -1723,39 +1541,19 @@ class Service_Yandex_Direct_ClientsCollection
 /// </class>
 
 
-/// <class name="Service.Yandex.Direct.ClientsMapper" extends="Service.Yandex.Direct.Mapper">
-///   <depends supplier="Service.Yandex.Direct.Client" stereotype="creates" />
-///   <depends supplier="Service.Yandex.Direct.ClientsCollection" stereotype="creates" />
-class Service_Yandex_Direct_ClientsMapper extends Service_Yandex_Direct_Mapper {
+/// <class name="Service.Yandex.Direct.Balance" extends="Service.Yandex.Direct.Entity">
+class Service_Yandex_Direct_Balance extends Service_Yandex_Direct_Entity {
 
-///   <protocol name="performing">
+///   <protocol name="supporting">
 
-///   <method name="select" returns="Service.Yandex.Direct.ClientsCollection">
+///   <method name="get_id" returns="int" access="protected">
 ///     <body>
-  public function select() {
-    return new Service_Yandex_Direct_ClientsCollection($this->api()->GetClientsList());
-  }
-///     </body>
-///   </method>
-
-///   <method name="find" returns="Service.Yandex.Direct.Client">
-///     <args>
-///       <arg name="by_login" type="string" />
-///     </args>
-///     <body>
-  public function by_login($login) {
-    return new Service_Yandex_Direct_Client($this->api()->GetClientInfo($login));
-  }
+  protected function get_id() { return $this->entity->CampaignID; }
 ///     </body>
 ///   </method>
 
 ///   </protocol>
 }
-/// </class>
-
-
-/// <class name="Service.Yandex.Direct.Balance" extends="Service.Yandex.Direct.Entity">
-class Service_Yandex_Direct_Balance extends Service_Yandex_Direct_Entity {}
 /// </class>
 
 
@@ -2064,6 +1862,7 @@ class Service_Yandex_Direct_Forecast  {
 ///   <source class="Service.Yandex.Direct.Forecast" stereotype="forecast" multiplicity="1" />
 ///   <source class="Service.Yandex.Direct.EntityCollection" stereotype="part" multiplicity="N" />
 /// </composition>
+
 
 /// <class name="Service.Yandex.Direct.Region" extends="Service.Yandex.Direct.Entity">
 class Service_Yandex_Direct_Region extends Service_Yandex_Direct_Entity {}
