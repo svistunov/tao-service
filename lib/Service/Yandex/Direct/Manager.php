@@ -5,6 +5,9 @@ Core::load('CLI.Application', 'IO.FS', 'Service.Yandex.Direct');
 /// <class name="Service.Yandex.Direct.Manager" stereotype="module">
 ///   <implements interface="Core.ModuleInterface" />
 ///   <implements interface="CLI.RunInterface" />
+///   <depends suppler="CLI.Application" stereotype="uses" />
+///   <depends supplier="IO.FS" stereotype="uses" />
+///   <depends supplier="Service.Yandex.Direct" stereotype="uses" />
 class Service_Yandex_Direct_Manager implements Core_ModuleInterface, CLI_RunInterface {
 
 ///   <constants>
@@ -22,6 +25,7 @@ class Service_Yandex_Direct_Manager implements Core_ModuleInterface, CLI_RunInte
 ///   </method>
 
 ///   </protocol>
+
 }
 /// </class>
 
@@ -29,6 +33,7 @@ class Service_Yandex_Direct_Manager implements Core_ModuleInterface, CLI_RunInte
 /// <class name="Service.Yandex.Direct.Manager.Exception" extends="Core.Exception">
 class Service_Yandex_Direct_Manager_Exception extends Core_Exception {}
 /// </class>
+
 
 /// <class name="Service.Yandex.Direct.Manager.MissingCertificateException" extends="Service.Yandex.Direct.Manager.Exception">
 class Service_Yandex_Direct_Manager_MissingCertificateException extends Service_Yandex_Direct_Manager_Exception {
@@ -52,7 +57,7 @@ class Service_Yandex_Direct_Manager_MissingCertificateException extends Service_
 }
 /// </class>
 
-
+/// <class name="Service.Yandex.Direct.Manager.MissingTaskFileException" extends="Service.Yandex.Direct.Manager.Exception" stereotype="abstract">
 class Service_Yandex_Direct_Manager_MissingTaskFileException extends Service_Yandex_Direct_Manager_Exception {
 
   protected $path;
@@ -72,17 +77,42 @@ class Service_Yandex_Direct_Manager_MissingTaskFileException extends Service_Yan
 ///   </method>
 
 ///   </protocol>
-
 }
 /// </class>
 
+
+/// <class name="Service.Yandex.Direct.Manager.BadArgumentException" extends="Service.Yandex.Direct.Manager.Exception" stereotype="Exception">
+class Service_Yandex_Direct_Manager_BadArgumentException extends Service_Yandex_Direct_Manager_Exception {
+  protected $name;
+  protected $value;
+
+///   <protocol name="creating">
+
+///   <method name="__construct">
+///     <args>
+///     </args>
+///     <body>
+  public function __construct($name, $value) {
+    $this->name = $name;
+    $this->value = (string) $value;
+
+    parent::__construct("Bad argument value for $name: $value");
+  }
+///     </body>
+///   </method>
+
+///   </protocol>
+}
+/// </class>
 
 /// <class name="Service.Yandex.Direct.Manager.Task" stereotype="abstract">
 abstract class Service_Yandex_Direct_Manager_Task {
 
   protected $file;
   protected $name;
-  protected $options;
+  protected $config;
+
+  protected $log;
 
 ///   <protocol name="creating">
 
@@ -92,10 +122,11 @@ abstract class Service_Yandex_Direct_Manager_Task {
 ///       <arg name="options" type="array" default="array" />
 ///     </args>
 ///     <body>
-  public function __construct(IO_FS_File $file, array $options = array()) {
+  public function __construct(IO_FS_File $file, Service_Yandex_Direct_Manager_Application $app) {
     $this->file = $file;
     $this->name = IO_FS::Path($file->path)->filename;
-    $this->options = $options;
+    $this->config = $app->config;
+    $this->log = $app->log->context(array('task' => $this->name)); 
   }
 ///     </body>
 ///   </method>
@@ -104,24 +135,28 @@ abstract class Service_Yandex_Direct_Manager_Task {
 
 ///   <protocol name="performing">
 
-///   <method name="run" returns="int">
+///   <method name="run">
 ///     <body>
   public function run() {
     $api = Service_Yandex_Direct::api();
+    $this->log->debug('Task %s started', $this->name);
+    try {
+      $campaigns = (isset($this->config->preload) && $this->config->preload) ?
+        ((isset($this->config->direct) && $this->config->direct) ?
+          $api->all_campaigns() : $api->campaigns_for($this->name)) :
+        new Service_Yandex_Direct_CampaignsCollection(array());
 
-    $campaigns = (isset($this->options['preload']) && $this->options['preload']) ?
-      ((isset($this->options['direct']) && $this->options['direct']) ?
-        $api->all_campaigns() : $api->campaigns_for($this->name)) :
-      new Service_Yandex_Direct_CampaignsCollection(array());
-
-      //ob_start();
-    include($this->file->path);
-    //ob_end_clean();
+        //ob_start();
+        include($this->file->path);
+        //ob_end_clean();
+    } catch (Exception $e) {
+      $this->log->error("Task error: %s", $e->getMessage());
+    }
   }
 ///     </body>
 ///   </method>
 
-///   <method name="stay_special" returns="Service.Yandex.Direct.Manager.UserTask" access="protected">
+///   <method name="stay_special" returns="Service.Yandex.Direct.Manager.Task" access="protected">
 ///     <args>
 ///       <arg name="limit" type="float" />
 ///       <arg name="phrases" />
@@ -129,7 +164,10 @@ abstract class Service_Yandex_Direct_Manager_Task {
 ///     </args>
 ///     <body>
   protected function stay_special($limit, $phrases, $delta = 0) {
+    $this->log->debug('Running stay_special, limit %.2f', $limit);
+
     $phrases = $this->get_phrases_for($phrases);
+
     $prices = $phrases->prices;
 
     foreach ($phrases as $phrase)
@@ -137,14 +175,12 @@ abstract class Service_Yandex_Direct_Manager_Task {
         $phrase->premium_min < $limit ?
           (($phrase->premium_min + $delta < $phrase->premium_max) ?  $phrase->premium_min + $delta : $phrase->premium_min + 0.01) : $limit;
 
-    $prices->update();
-
-    return $this;
+    return $this->update_prices($prices);
   }
 ///     </body>
 ///   </method>
 
-///   <method name="stay_visible" returns="Service.Yandex.Direct.Manager.UserTask" access="protected">
+///   <method name="stay_visible" returns="Service.Yandex.Direct.Manager.Task" access="protected">
 ///     <args>
 ///       <arg name="limit" type="float" />
 ///       <arg name="phrases" />
@@ -152,6 +188,8 @@ abstract class Service_Yandex_Direct_Manager_Task {
 ///     </args>
 ///     <body>
   protected function stay_visible($limit, $phrases, $delta = 0) {
+    $this->log->debug('Runing stay_visible, limit %.2f', $limit);
+
     $phrases = $this->get_phrases_for($phrases);
     $prices  = $phrases->prices;
 
@@ -160,14 +198,12 @@ abstract class Service_Yandex_Direct_Manager_Task {
         $phrase->current_price < $phrase->min_price ?
           ($phrase->min_price + $delta < $limit ? $phrase->min_price + $delta : $limit) : $phrase->current_price;
 
-    $prices->update();
-
-    return $this;
+   return $this->update_prices($prices);
   }
 ///     </body>
 ///   </method>
 
-///   <method name="try_special" returns="Service.Yandex.Direct.Manager.UserTask" access="protected">
+///   <method name="try_special" returns="Service.Yandex.Direct.Manager.Task" access="protected">
 ///     <args>
 ///       <arg name="limit" type="float" />
 ///       <arg name="phrases" />
@@ -175,6 +211,8 @@ abstract class Service_Yandex_Direct_Manager_Task {
 ///     </args>
 ///     <body>
   protected function try_special($limit, $phrases, $delta = 0) {
+    $this->log->debug('Running try_special, limit %.2f', $limit);
+    
     $phrases = $this->get_phrases_for($phrases);
     $prices = $phrases->prices;
 
@@ -187,9 +225,7 @@ abstract class Service_Yandex_Direct_Manager_Task {
               $phrase->min_price + $delta : $limit) :
               ($phrase->current_price > $limit ? $limit : $phrase->current_price));
 
-    $prices->update();
-
-    return $this;
+    return $this->update_prices($prices);
   }
 ///     </body>
 ///   </method>
@@ -197,6 +233,21 @@ abstract class Service_Yandex_Direct_Manager_Task {
 ///   </protocol>
 
 ///   <protocol name="supporting">
+
+///   <method name="updated_prices" returns="Service.Yandex.Direct.Manager.Task" access="protected">
+///     <args>
+///       <arg name="prices" type="Service.Yandex.Direct.PricesCollection" />
+///     </args>
+///     <body>
+  protected function update_prices(Service_Yandex_Direct_PricesCollection $prices) {
+    if ($prices->update())
+      $this->log->debug('Prices successfully updated');
+    else
+      $this->log->error('Prices not updated');
+    return $this;
+  }
+///     </body>
+///   </method>
 
 ///   <method name="get_phrases_for" returns="Service.Yandex.Direct.PhrasesCollection" access="private">
 ///     <args>
@@ -214,9 +265,11 @@ abstract class Service_Yandex_Direct_Manager_Task {
       case $phrases instanceof Service_Yandex_Direct_PhrasesCollection:
         return $phrases;
       default:
-        throw new Service_Yandex_Direct_Manager_BadArgument('stay_special->phrases', $phrases);
+        throw new Service_Yandex_Direct_Manager_BadArgumentException('stay_special->phrases', $phrases);
     }
-    return $phrases->where(array('LowCTR not', 1));
+    $phrases = $phrases->where(array('LowCTR not', 1));
+    $this->log->debug('Got phrases: %d', count($phrases));
+    return $phrases;
   }
 ///     </body>
 ///   </method>
@@ -231,10 +284,11 @@ class Service_Yandex_Direct_Manager_UserTask extends Service_Yandex_Direct_Manag
 /// </class>
 
 
-/// <class name="Service.Yandex.Direct.Manager.Application" extends="CLI.Application.AbstractApplication">
-class Service_Yandex_Direct_Manager_Application extends CLI_Application_AbstractApplication {
+/// <class name="Service.Yandex.Direct.Manager.Application" extends="CLI.Application.Base">
+class Service_Yandex_Direct_Manager_Application extends CLI_Application_Base {
 
   protected $processed = 0;
+  protected $log;
 
 ///   <protocol name="performing">
 
@@ -248,7 +302,7 @@ class Service_Yandex_Direct_Manager_Application extends CLI_Application_Abstract
       check_certificate()->
       setup_api();
 
-    return $this->options['run_all'] ? $this->run_all() : $this->run_tasks($argv);
+    return $this->config->run_all ? $this->run_all() : $this->run_tasks($argv);
   }
 ///     </body>
 ///   </method>
@@ -260,8 +314,9 @@ class Service_Yandex_Direct_Manager_Application extends CLI_Application_Abstract
 ///   <method name="check_certificate" returns="Service.Yandex.Direct.Manager access="private">
 ///     <body>
   private function check_certificate() {
-    if (!isset($this->options['cert'])) throw new Service_Yandex_Direct_Manager_MissingCertificateException();
-    if (!IO_FS::exists($p = $this->options['cert'])) throw new Service_Yandx_Direct_Manager_MissingCertificate($p);
+    if (!isset($this->config->cert)) throw new Service_Yandex_Direct_Manager_MissingCertificateException();
+    if (!IO_FS::exists($p = $this->config->cert)) throw new Service_Yandex_Direct_Manager_MissingCertificateException($p);
+    $this->log->debug('Using certificate: %s', $this->config->cert);
     return $this;
   }
 ///     </body>
@@ -271,12 +326,13 @@ class Service_Yandex_Direct_Manager_Application extends CLI_Application_Abstract
 ///     <body>
   private function configure_proxy() {
     $res = array();
-    if (($proxy =  (isset($this->options['proxy']) ?
-           $this->options['proxy'] :
+    if (($proxy =  (isset($this->config->proxy) ?
+           $this->config->proxy :
            ( ($p = getenv('http_proxy')) ? $p : ''))) &&
         ($m = Core_Regexps::match_with_results('{(?:https?://)?([^:]+):(?:(\d+))}', $proxy))) {
       if (isset($m[1])) $res['proxy_host'] = $m[1];
       if (isset($m[2])) $res['proxy_port'] = $m[2];
+      $this->log->debug("Using proxy %s:%d", $m[1], $m[2]);
     }
     return $res;
   }
@@ -287,7 +343,8 @@ class Service_Yandex_Direct_Manager_Application extends CLI_Application_Abstract
 ///     <body>
   private function setup_api() {
     Service_Yandex_Direct::connect(
-      array('local_cert' => $this->options['cert']) + $this->configure_proxy());
+      array('local_cert' => $this->config->cert) + $this->configure_proxy());
+    $this->log->debug('API initialized');
     return $this;
   }
 ///     </body>
@@ -296,10 +353,12 @@ class Service_Yandex_Direct_Manager_Application extends CLI_Application_Abstract
 ///   <method name="run_all" returns="Service.Yandex.Direct.Manager" access="private">
 ///     <body>
   private function run_all() {
-    foreach (IO_FS::Dir($this->options['prefix']) as $file) {
-      Core::with(new Service_Yandex_Direct_Manager_UserTask(IO_FS::File($file), $this->options))->run();
+    $this->log->debug("Running all tasks for prefix %s", $this->config->prefix);
+    foreach (IO_FS::Dir($this->config->prefix) as $file) {
+      Core::with(new Service_Yandex_Direct_Manager_UserTask(IO_FS::File($file), $this))->run();
       $this->processed++;
     }
+    $this->log->debug("All tasks complete");
   }
 ///     </body>
 ///   </method>
@@ -310,12 +369,15 @@ class Service_Yandex_Direct_Manager_Application extends CLI_Application_Abstract
 ///     </args>
 ///     <body>
   private function run_tasks(array $tasks) {
+    $this->log->debug("Running task list");
     foreach ($tasks as $name) {
-      $path = $this->options['prefix'] ? $this->options['prefix'].$name.'.php' : $name;
+      $path = $this->config->prefix ? $this->config->prefix.$name.'.php' : $name;
       if (!IO_FS::exists($path)) throw new Service_Yandex_Direct_Manager_MissingTaskFileException($path);
-      Core::with(new Service_Yandex_Direct_Manager_Task(IO_FS::File($path), $this->options))->run();
+      Core::with(new Service_Yandex_Direct_Manager_Task(IO_FS::File($path), $this->config))->run();
       $this->processed++;
     }
+    $this->log->debug("Task list complete");
+
     return $this;
   }
 ///   </method>
@@ -323,30 +385,38 @@ class Service_Yandex_Direct_Manager_Application extends CLI_Application_Abstract
 ///   <method name="setup" access="protected">
 ///     <body>
   protected function setup() {
-    return parent::setup()->
-      usage_text(Core_Strings::format(
-        "Service.Yandex.Direct.Manager %s: Yandex.Direct campaigns manager\n",
-          Service_Yandex_Direct_Manager::VERSION))->
-      options(
-        array(
-          array('cert',    '-c', '--cert',    'string',  null, 'Client certificate'),
-          array('proxy',   '-p', '--proxy',   'string',  null, 'HTTP proxy'),
-          array('prefix',  '-i', '--prefix',  'string',  null, 'Tasks prefix'),
-          array('preload', '-l', '--preload', 'boolean', true, 'Preload campaigns'),
-          array('run_all', '-a', '--all',     'boolean', true, 'Run all tasks'),
-          array('direct',  '-d', '--direct',  'boolean', true, 'Direct client, not agency')),
-        array('certificate' => null,
-              'proxy' => null,
-              'prefix' => '',
-              'preload' => true,
-              'run_all' => false,
-              'direct'  => false));
+    $this->options->
+      brief('Service.Yandex.Direct.Manager '.Service_Yandex_Direct_Manager::VERSION.': Yandex.Direct campaigns manager')->
+       string_option('cert',        '-c', '--cert',    'Client certificate')->
+       string_option('config_file', '-s', '--config',  'Use configuration file')->
+       string_option('proxy',       '-p', '--proxy',   'HTTP proxy')->
+       string_option('prefix',      '-i', '--prefix',  'Tasks prefix')->
+      boolean_option('preload',     '-l', '--preload', 'Preload campaigns')->
+      boolean_option('run_all',     '-a', '--all',     'Run all tasks')->
+      boolean_option('direct',      '-d', '--direct',  'Direct client, not agency');
+
+    $this->config->certificate = null;
+    $this->config->proxy       = null;
+    $this->config->prefix      = '';
+    $this->config->preload     = true;
+    $this->config->run_all     = false;
+    $this->config->direct      = false;
+  }
+///     </body>
+///   </method>
+
+///   <method name="configure" access="protected">
+///     <body>
+  protected function configure() {
+    if ($this->config->config_file) {
+      $this->log->debug('Using config: %s', $this->config->config_file);
+      $this->load_config($this->config->config_file);
+    }
   }
 ///     </body>
 ///   </method>
 
 ///   </protocol>
-
 }
 /// </class>
 
