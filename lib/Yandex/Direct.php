@@ -8,6 +8,7 @@ class Service_Yandex_Direct implements Core_ModuleInterface {
 
 ///   <constants>
   const VERSION = '0.2.0';
+  //TODO: сделать опцией
   const DELAY   = 5;
   const WSDL    = 'http://soap.direct.yandex.ru/api.wsdl';
 ///   </constants>
@@ -249,7 +250,6 @@ abstract class Service_Yandex_Direct_Collection
              Countable {
 
   protected $items;
-  protected $ids;
 
 ///   <protocol name="creating">
 
@@ -295,14 +295,14 @@ abstract class Service_Yandex_Direct_Collection
 ///     </body>
 ///   </method>
 
-///   <method name="isset" returns="boolean">
+///   <method name="__isset" returns="boolean">
 ///     <args>
 ///       <arg name="property" type="string" />
 ///     </args>
 ///     <body>
   public function __isset($property) {
     switch (true) {
-      case '__items':
+      case $property == '__items':
         return true;
       case method_exists($this, $m = "isset_$property"):
         return $this->$m();

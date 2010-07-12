@@ -126,7 +126,7 @@ abstract class Service_Yandex_Direct_Manager_Task {
     $this->file = $file;
     $this->name = IO_FS::Path($file->path)->filename;
     $this->config = $app->config;
-    $this->log = $app->log->context(array('task' => $this->name)); 
+    $this->log = $app->log->context(array('task' => $this->name));
   }
 ///     </body>
 ///   </method>
@@ -212,7 +212,7 @@ abstract class Service_Yandex_Direct_Manager_Task {
 ///     <body>
   protected function try_special($limit, $phrases, $delta = 0) {
     $this->log->debug('Running try_special, limit %.2f', $limit);
-    
+
     $phrases = $this->get_phrases_for($phrases);
     $prices = $phrases->prices;
 
