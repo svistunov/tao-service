@@ -954,7 +954,7 @@ class Service_Google_AdWords_Object implements
 ///     </args>
 ///     <body>
   public function __call($method, $parms) {
-    $this->__set($method, $parms[0]);
+    $this->__set($method, count($parms) > 1 ? $parms : $parms[0]);
     return $this;
   }
 ///     </body>
