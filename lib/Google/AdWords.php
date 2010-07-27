@@ -430,16 +430,7 @@ class Service_Google_AdWords_Client implements Core_PropertyAccessInterface {
 ///     </args>
 ///     <body>
   public function __set($property, $value) {
-    switch ($property) {
-      case 'is_sandbox':
-        return $this->use_sandbox((boolean) $value);
-      case 'headers':
-        return $this->headers((array) $value);
-      case 'units': case 'services':
-        throw new Core_ReadOnlyPropertyException($property);
-      default:
-        throw new Core_MissingPropertyException($property);
-    }
+    throw new Core_ReadOnlyObjectException($this);
   }
 ///     </body>
 ///   </method>
@@ -450,7 +441,8 @@ class Service_Google_AdWords_Client implements Core_PropertyAccessInterface {
 ///     </args>
 ///     <body>
   public function __isset($property) {
-    return isset($this->$property) || $property == 'units';
+    return isset($this->$property) || $property == 'units' ||
+      isset($this->services[str_replace('_service', '', $property)]);
   }
 ///     </body>
 ///   </method>
