@@ -1175,9 +1175,16 @@ class Service_Google_AdWords_Entity extends Service_Google_AdWords_Object {
 ///   <method name="convert_element">
 ///     <body>
   protected function convert_element($element) {
-    return ($element instanceof Service_Google_AdWords_Entity) ?
-      $element->__value :
-      parent::convert_element($element);
+    switch (true) {
+      case $element instanceof self:
+        return $element->__value;
+      case method_exists($element, 'as_array'):
+        return $element->as_array();
+      case is_array($element):
+        return Core::with(new Service_Google_AdWords_Entity($element))->as_array();
+      default:
+        return $element;
+    }
   }
 ///     </body>
 ///   </method>
