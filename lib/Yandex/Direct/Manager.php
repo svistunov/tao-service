@@ -220,10 +220,10 @@ abstract class Service_Yandex_Direct_Manager_Task {
       $prices->by_id($phrase->id)->price =
         ($phrase->premium_min + $delta < $limit) ?
           ($phrase->premium_min + $delta) :
-          ($phrase->current_price < $phrase->min_price ?
+          (($phrase->current_price < $phrase->min_price) ?
             ($phrase->min_price + $delta < $limit ?
               $phrase->min_price + $delta : $limit) :
-              ($phrase->current_price > $limit ? $limit : $phrase->current_price));
+              $limit);
 
     return $this->update_prices($prices);
   }
