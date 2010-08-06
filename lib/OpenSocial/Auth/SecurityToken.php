@@ -1,8 +1,9 @@
 <?php
 /// <module name="Service.OpenSocial.Auth.SecurityToken" maintainer="svistunov@techart.ru" version="0.1.0">
 
-/// <class name="Service.OpenSocial.Auth.SecurityToken">
+/// <class name="Service.OpenSocial.Auth.SecurityToken" stereotype="module">
 ///   <implements interface="Service.OpenSocial.ModuleInterface" />
+///   <depends supplier="Service.OpenSocial.Auth.SecurityToken.Adapter" stereotype="creates" />
 class Service_OpenSocial_Auth_SecurityToken implements Service_OpenSocial_ModuleInterface {
 
 ///   <protocol name="creating">
