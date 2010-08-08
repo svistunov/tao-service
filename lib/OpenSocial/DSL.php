@@ -98,9 +98,9 @@ class Service_OpenSocial_DSL_RequestBuilder {
 /// <depends supplier="Net.Agents.HTTP.Agent" stereotype="uses" />
 class Service_OpenSocial_DSL_ClientBuilder {
 
-  protected $protocol;
+  protected $protocol = array('RPC');
   protected $auth;
-  protected $format;
+  protected $format   = array('JSON');
   protected $container;
   protected $agent;
 
@@ -141,6 +141,37 @@ class Service_OpenSocial_DSL_ClientBuilder {
 ///     <body>
   public function agent(Net_Agents_HTTP_Agent $agent) {
     $this->agent = $agent;
+    return $this;
+  }
+///     </body>
+///   </method>
+
+///   <method name="security_token" returns="Sevice.OpenSocial.DSL.ClientBuilder">
+///     <args>
+///       <arg name="name" type="string" />
+///       <arg name="value" type="string" />
+///     </args>
+///     <body>
+  public function security_token($name, $value) {
+    $this->auth = new Service_OpenSocial_Auth_SecurityToken_Adapter($name, $value);
+    return $this;
+  }
+///     </body>
+///   </method>
+
+///   <method name="RPC" returns="Service.OpenSocial.DSL.ClientBuilder">
+///     <body>
+  public function RPC() {
+    $this->protocol = array('RPC');
+    return $this;
+  }
+///     </body>
+///   </method>
+
+///   <method name="REST" returns="Service.OpenSocial.DSL.ClientBuilder">
+///     <body>
+  public function REST() {
+    $this->protocol = array('REST');
     return $this;
   }
 ///     </body>
