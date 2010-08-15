@@ -1,12 +1,12 @@
 <?php
-/// <module name="Service.OpenSocial" version="1.0.0" maintainer="svistunov@techart.ru">
+/// <module name="Service.OpenSocial" version="0.1.1" maintainer="svistunov@techart.ru">
 /// <brief>OpenSocial-клиент</brief>
 
 /// <interface name="Service.OpenSocial.ModuleInterface" extends="Core.ModuleInterface">
 ///   <brief>Библиотека модулей OpenSocial</brief>
 interface Service_OpenSocial_ModuleInterface extends Core_ModuleInterface {
 ///   <constants>
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
 ///   </constants>
 }
 /// </interface>
@@ -487,15 +487,6 @@ class Service_OpenSocial_Collection
 class Service_OpenSocial_ResultSet extends ArrayObject {
 
 ///   <protocol name="accessing">
-
-///   <method name="offsetGet" returns="Service.OpenSocial.ResultInterface">
-///     <args>
-///       <arg name="index" type="string" />
-///     </args>
-///     <body>
-  public function offsetGet($index) { return isset($this[$index]) ? $this[$index] : null; }
-///     </body>
-///   </method>
 
 ///   <method name="offsetSet">
 ///     <args>
