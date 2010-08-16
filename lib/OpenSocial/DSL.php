@@ -153,7 +153,7 @@ class Service_OpenSocial_DSL_ClientBuilder {
 ///     </args>
 ///     <body>
   public function security_token($name, $value) {
-    $this->auth = new Service_OpenSocial_Auth_SecurityToken_Adapter($name, $value);
+    $this->auth = array('SecurityToken', $name, $value);
     return $this;
   }
 ///     </body>
